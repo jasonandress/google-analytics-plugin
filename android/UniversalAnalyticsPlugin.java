@@ -32,12 +32,16 @@ public class UniversalAnalyticsPlugin extends CordovaPlugin {
     public static final String SET_ANONYMIZE_IP = "setAnonymizeIp";
     public static final String SET_OPT_OUT = "setOptOut";
     public static final String SET_APP_VERSION = "setAppVersion";
+    public static final String GET_VAR = "getVar";
+    public static final String SET_VAR = "setVar";
+    public static final String DISPATCH = "dispatch";
     public static final String DEBUG_MODE = "debugMode";
     public static final String ENABLE_UNCAUGHT_EXCEPTION_REPORTING = "enableUncaughtExceptionReporting";
 
     public Boolean trackerStarted = false;
     public Boolean debugModeEnabled = false;
     public HashMap<Integer, String> customDimensions = new HashMap<Integer, String>();
+    public HashMap<Integer, Float> customMetrics = new HashMap<Integer, Float>();
 
     public Tracker tracker;
 
@@ -128,6 +132,17 @@ public class UniversalAnalyticsPlugin extends CordovaPlugin {
         } else if (SET_APP_VERSION.equals(action)) {
             String version = args.getString(0);
             this.setAppVersion(version, callbackContext);
+        } else if (GET_VAR.equals(action)) {
+            String variable = args.getString(0);
+            this.getVar(variable, callbackContext);           
+        } else if (SET_VAR.equals(action)) {
+            String variable = args.getString(0);
+            String value = args.getString(1);
+            this.setVar(variable, value, callbackContext);               
+            return true;
+        } else if (DISPATCH.equals(action)) {
+            this.dispatch(callbackContext);               
+            return true;            
         } else if (DEBUG_MODE.equals(action)) {
             this.debugMode(callbackContext);
         } else if (ENABLE_UNCAUGHT_EXCEPTION_REPORTING.equals(action)) {
@@ -163,15 +178,32 @@ public class UniversalAnalyticsPlugin extends CordovaPlugin {
         callbackContext.success("custom dimension started");
     }
 
-    private <T> void addCustomDimensionsToHitBuilder(T builder) {
+    private <T> void addCustomDimensionsAndMetricsToHitBuilder(T builder) {
         //unfortunately the base HitBuilders.HitBuilder class is not public, therefore have to use reflection to use
-        //the common setCustomDimension (int index, String dimension) method
+        //the common setCustomDimension (int index, String dimension) and setCustomMetrics (int index, Float metric) methods
         try {
             Method builderMethod = builder.getClass().getMethod("setCustomDimension", Integer.TYPE, String.class);
 
             for (Entry<Integer, String> entry : customDimensions.entrySet()) {
                 Integer key = entry.getKey();
                 String value = entry.getValue();
+                try {
+                    builderMethod.invoke(builder, (key), value);
+                } catch (IllegalArgumentException e) {
+                } catch (IllegalAccessException e) {
+                } catch (InvocationTargetException e) {
+                }
+            }
+        } catch (SecurityException e) {
+        } catch (NoSuchMethodException e) {
+        }
+
+        try {
+            Method builderMethod = builder.getClass().getMethod("setCustomMetric", Integer.TYPE, Float.TYPE);
+
+            for (Entry<Integer, Float> entry : customMetrics.entrySet()) {
+                Integer key = entry.getKey();
+                Float value = entry.getValue();
                 try {
                     builderMethod.invoke(builder, (key), value);
                 } catch (IllegalArgumentException e) {
@@ -194,7 +226,7 @@ public class UniversalAnalyticsPlugin extends CordovaPlugin {
             tracker.setScreenName(screenname);
 
             HitBuilders.ScreenViewBuilder hitBuilder = new HitBuilders.ScreenViewBuilder();
-            addCustomDimensionsToHitBuilder(hitBuilder);
+            addCustomDimensionsAndMetricsToHitBuilder(hitBuilder);
 
             if(!campaignUrl.equals("")){
                 hitBuilder.setCampaignParamsFromUrl(campaignUrl);
@@ -220,7 +252,7 @@ public class UniversalAnalyticsPlugin extends CordovaPlugin {
 
         if (null != category && category.length() > 0) {
             HitBuilders.EventBuilder hitBuilder = new HitBuilders.EventBuilder();
-            addCustomDimensionsToHitBuilder(hitBuilder);
+            addCustomDimensionsAndMetricsToHitBuilder(hitBuilder);
 
             if(!newSession){
                 tracker.send(hitBuilder
@@ -246,21 +278,26 @@ public class UniversalAnalyticsPlugin extends CordovaPlugin {
     }
 
     private void trackMetric(Integer key, String value, CallbackContext callbackContext) {
-        if (!trackerStarted) {
-            callbackContext.error("Tracker not started");
+        if (key <= 0) {
+            callbackContext.error("Expected positive integer argument for key.");
             return;
         }
 
-        if (key >= 0) {
-            HitBuilders.ScreenViewBuilder hitBuilder = new HitBuilders.ScreenViewBuilder();
-            tracker.send(hitBuilder
-                    .setCustomMetric(key, Float.parseFloat(value))
-                    .build()
-            );
-            callbackContext.success("Track Metric: " + key + ", value: " + value);
-        } else {
-            callbackContext.error("Expected integer key: " + key + ", and string value: " + value);
+        if (null == value || value.length() == 0) {
+            callbackContext.error("Expected non-empty string argument for value.");
+            return;
         }
+
+        Float floatValue;
+        try {
+            floatValue = Float.parseFloat(value);
+        } catch (NumberFormatException e) {
+            callbackContext.error("Expected string formatted number for value.");
+            return;
+        }
+
+        customMetrics.put(key, floatValue);
+        callbackContext.success("custom metric started");
     }
 
     private void trackException(String description, Boolean fatal, CallbackContext callbackContext) {
@@ -271,7 +308,7 @@ public class UniversalAnalyticsPlugin extends CordovaPlugin {
 
         if (null != description && description.length() > 0) {
             HitBuilders.ExceptionBuilder hitBuilder = new HitBuilders.ExceptionBuilder();
-            addCustomDimensionsToHitBuilder(hitBuilder);
+            addCustomDimensionsAndMetricsToHitBuilder(hitBuilder);
 
             tracker.send(hitBuilder
                     .setDescription(description)
@@ -292,7 +329,7 @@ public class UniversalAnalyticsPlugin extends CordovaPlugin {
 
         if (null != category && category.length() > 0) {
             HitBuilders.TimingBuilder hitBuilder = new HitBuilders.TimingBuilder();
-            addCustomDimensionsToHitBuilder(hitBuilder);
+            addCustomDimensionsAndMetricsToHitBuilder(hitBuilder);
 
             tracker.send(hitBuilder
                     .setCategory(category)
@@ -315,7 +352,7 @@ public class UniversalAnalyticsPlugin extends CordovaPlugin {
 
         if (null != id && id.length() > 0) {
             HitBuilders.TransactionBuilder hitBuilder = new HitBuilders.TransactionBuilder();
-            addCustomDimensionsToHitBuilder(hitBuilder);
+            addCustomDimensionsAndMetricsToHitBuilder(hitBuilder);
 
             tracker.send(hitBuilder
                     .setTransactionId(id)
@@ -339,7 +376,7 @@ public class UniversalAnalyticsPlugin extends CordovaPlugin {
 
         if (null != id && id.length() > 0) {
             HitBuilders.ItemBuilder hitBuilder = new HitBuilders.ItemBuilder();
-            addCustomDimensionsToHitBuilder(hitBuilder);
+            addCustomDimensionsAndMetricsToHitBuilder(hitBuilder);
 
             tracker.send(hitBuilder
                     .setTransactionId(id)
@@ -367,8 +404,42 @@ public class UniversalAnalyticsPlugin extends CordovaPlugin {
         callbackContext.success("Enable Advertising Id Collection: " + enable);
     }
 
+    private void setVar(String variable, String value, CallbackContext callbackContext) {
+        if (!trackerStarted) {
+            callbackContext.error("Tracker not started");
+            return;
+        }
+
+        tracker.set(variable, value);
+        callbackContext.success("Set variable " + variable + "to " + value);
+    }  
+    private void dispatch(CallbackContext callbackContext) {
+        if (!trackerStarted) {
+            callbackContext.error("Tracker not started");
+            return;
+        }
+
+        GoogleAnalytics.getInstance(this.cordova.getActivity()).dispatchLocalHits();
+        callbackContext.success("dispatch sent");
+    }     
+
+    private void getVar(String variable, CallbackContext callbackContext) {
+        if (!trackerStarted) {
+            callbackContext.error("Tracker not started");
+            return;
+        }
+
+        String result = tracker.get(variable);
+        callbackContext.success(result);
+    }    
+
     private void debugMode(CallbackContext callbackContext) {
-        GoogleAnalytics.getInstance(this.cordova.getActivity()).getLogger().setLogLevel(LogLevel.VERBOSE);
+        // GAv4 Logger is deprecated!
+        // GoogleAnalytics.getInstance(this.cordova.getActivity()).getLogger().setLogLevel(LogLevel.VERBOSE);
+        
+        // To enable verbose logging execute "adb shell setprop log.tag.GAv4 DEBUG"
+        // and then "adb logcat -v time -s GAv4" to inspect log entries.
+        GoogleAnalytics.getInstance(this.cordova.getActivity()).setDryRun(true);
 
         this.debugModeEnabled = true;
         callbackContext.success("debugMode enabled");
