@@ -38,6 +38,14 @@ Windows Phone users have to manually add the [Google Analytics SDK for Windows 8
 
 Windows 10 (UWP) users have to manually add the [Windows SDK for Google Analytics](https://github.com/dotnet/windows-sdk-for-google-analytics) to your solution. To do this, just open your Cordova solution in Visual Studio, and add the [UWP.SDKforGoogleAnalytics.Native package via NuGet](http://nuget.org/packages/UWP.SDKforGoogleAnalytics.Native). This plugin requires v1.5.2 or higher.
 
+# Configuring `play-services` Version
+
+Many other plugins require Google Play Services and/or Firebase libraries. This is a common source of Android build-failures, since the `play-services` library version must be aligned to the same version for **all** plugins. For example, when one plugin imports version `11.0.1` and another one imports `11.2.0`, a gradle build failure will occur. Use the `GMS_VERSION` to align the required play-services version with other plugins.
+
+```
+cordova plugin add cordova-plugin-google-analytics --variable GMS_VERSION=11.0.1
+```
+
 # Release note
 
 v1.0.0 -- api change from ```window.analytics``` to ```window.ga```, 'analytics' is deprecated since 1.0.0 and you should use the new api 'ga',
@@ -48,6 +56,8 @@ and this is causing errors for those who are using the ionic 2(ionic-native) or 
 these wrapper interfaces don't have the new parameters at the time we did the changes; so please update you ionic framework to the lastest version.
 
 v1.7.11 -- since this version there is back compatibility with the new and old parameters in the method `startTrackerWithId('UA-XXXX-YY', 30)` to avoid loading issues reported.
+
+v1.8.4 -- fix conflicting versions of google play services due to multiple implementations.
 
 v1.9.0 -- since this version the windows platform is supported.
 
@@ -79,7 +89,7 @@ window.ga.trackEvent('Category', 'Action', 'Label', Value, true)// Label, Value 
 //(trackMetric doesn't actually send a hit, it's behaving more like the addCustomDimension() method.
 // The metric is afterwards added to every hit (view, event, error, etc...) sent, but the defined scope of the custom metric in analytics backend
 //   (hit or product) will determine, at processing time, which hits are associated with the metric value.)
-window.ga.trackMetric(Key, Value) // Key and value are numeric type
+window.ga.trackMetric(Key, Value) // Key and value are numeric type, Value is optional (omit value to unset metric)
 
 //To track an Exception:
 window.ga.trackException('Description', Fatal)//where Fatal is boolean
@@ -98,6 +108,7 @@ window.ga.addTransactionItem('ID', 'Name', 'SKU', 'Category', Price, Quantity, '
 //   (hit or product) will determine, at processing time, which hits are associated with the dimension value.)
 window.ga.addCustomDimension(Key, 'Value', success, error)
 //Key should be integer index of the dimension i.e. send `1` instead of `dimension1` for the first custom dimension you are tracking. e.g. `window.ga.addCustomDimension(1, 'Value', success, error)`
+//Use empty string as value to unset custom dimension.
 
 //To set a UserId:
 window.ga.setUserId('my-user-id')
@@ -136,7 +147,7 @@ window.ga.debugMode()
 window.ga.enableUncaughtExceptionReporting(Enable, success, error)// where Enable is boolean
 ```
 
-# Example use ionic 2 (Ionic Native)
+# Example use ionic (Ionic Native)
 ```shell
 npm i --save @ionic-native/google-analytics
 ```
@@ -162,7 +173,7 @@ import { Platform } from 'ionic-angular';
   }
 ```
 
-**Issue for using trackMetric in Ionic 2**: currently `@ionic-native/google-analytics` defines the typescript signature with `trackMetric(key: string, value?: any)`.
+**Issue for using trackMetric in Ionic**: currently `@ionic-native/google-analytics` defines the typescript signature with `trackMetric(key: string, value?: any)`.
 So be aware to pass the metric index as a string formatted integer and a non empty string as a value, like `window.ga.trackMetric('1', 'Value', success, error)`!
 
 # Installing Without the CLI <a name="nocli"></a>
